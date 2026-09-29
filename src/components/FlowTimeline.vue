@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { buildNodeStates } from '../utils/flow'
 import { ROLLBACK_TYPE_LABEL } from '../constants/enums'
 import { formatDateTime } from '../utils/time'
@@ -13,24 +13,70 @@ import { formatDateTime } from '../utils/time'
  *   - 有限动效：只有"当前活跃的那一条边"在流动，其余静止。
  *   - 尊重 prefers-reduced-motion（全局样式已统一处理）。
  *   - 数据自足：只读项目自身的 flowSnapshot / nodeRecords / rollbackHistory。
+ *
+ * H5 适配：7 个节点在手机上原本需要横拖 4 倍屏宽。现在
+ *   ① 窄屏下节点收窄（128 → 88px）；
+ *   ② 进场时自动把「当前节点」滚到屏幕中央，一打开就知道自己在哪。
  */
 
-// 尺寸常量：节点宽 128，间距 32，步长 160
-const NODE_W = 128
-const STEP = 160
-const NODE_CENTER = NODE_W / 2
+/** 节点间距（固定），节点宽度随屏幕变化。 */
+const GAP = 32
+const NARROW_NODE_W = 88
+const WIDE_NODE_W = 128
 
 const props = defineProps({
   project: { type: Object, required: true },
 })
 
+const narrow = ref(false)
+const scrollerRef = ref(null)
+const nodeRefs = ref([])
+
+function updateNarrow() {
+  narrow.value = typeof window !== 'undefined' && window.innerWidth < 640
+}
+
+function setNodeRef(index, el) {
+  nodeRefs.value[index] = el
+}
+
+const nodeWidth = computed(() => (narrow.value ? NARROW_NODE_W : WIDE_NODE_W))
+const step = computed(() => nodeWidth.value + GAP)
+const nodeCenter = computed(() => nodeWidth.value / 2)
+
 const states = computed(() => buildNodeStates(props.project))
 
 const stripWidth = computed(() =>
-  states.value.length ? states.value.length * NODE_W + (states.value.length - 1) * (STEP - NODE_W) : 0,
+  states.value.length ? states.value.length * nodeWidth.value + (states.value.length - 1) * GAP : 0,
 )
 
 const currentIndex = computed(() => states.value.findIndex((s) => s.status === 'current'))
+
+/** 把当前节点滚到可视区中央。 */
+function centerCurrentNode() {
+  const scroller = scrollerRef.value
+  const index = currentIndex.value
+  if (!scroller || index < 0) return
+  const el = nodeRefs.value[index]
+  if (!el) return
+  const scrollerRect = scroller.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  const delta = elRect.left - scrollerRect.left - (scroller.clientWidth - elRect.width) / 2
+  // behavior:auto —— 进场时不要动画，也避免和"减弱动效"偏好冲突
+  scroller.scrollTo({ left: Math.max(0, scroller.scrollLeft + delta), behavior: 'auto' })
+}
+
+onMounted(() => {
+  updateNarrow()
+  window.addEventListener('resize', updateNarrow)
+  nextTick(centerCurrentNode)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateNarrow)
+})
+
+watch(currentIndex, () => nextTick(centerCurrentNode))
 
 /** 最近一次回退，用于绘制红色反向流动路径。 */
 const latestRollback = computed(() => {
@@ -45,8 +91,8 @@ const rollbackGeometry = computed(() => {
   const fromIndex = states.value.findIndex((s) => s.node.id === rollback.fromNodeId)
   const toIndex = states.value.findIndex((s) => s.node.id === rollback.toNodeId)
   if (fromIndex < 0 || toIndex < 0) return null
-  const fromX = fromIndex * STEP + NODE_CENTER
-  const toX = toIndex * STEP + NODE_CENTER
+  const fromX = fromIndex * step.value + nodeCenter.value
+  const toX = toIndex * step.value + nodeCenter.value
   return {
     d: `M ${fromX} 10 C ${fromX} 54, ${toX} 54, ${toX} 10`,
     labelX: (fromX + toX) / 2,
@@ -82,19 +128,19 @@ function markerClass(state) {
       <h3 class="text-sm font-semibold text-slate-900">流转轨迹</h3>
       <span
         v-if="latestRollback"
-        class="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700"
+        class="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700"
         :title="`${latestRollback.byName || ''} ${formatDateTime(latestRollback.at)}`"
       >
         共 {{ (project.rollbackHistory || []).length }} 次回退
       </span>
     </div>
 
-    <div class="thin-scrollbar overflow-x-auto pb-1">
+    <div ref="scrollerRef" class="thin-scrollbar overflow-x-auto pb-1">
       <div class="relative" :style="{ width: `${stripWidth}px`, minWidth: '100%' }">
         <!-- 节点行 -->
         <div class="relative flex items-start">
           <template v-for="(state, index) in states" :key="state.node.id">
-            <div class="flex-none" :style="{ width: `${NODE_W}px` }">
+            <div :ref="(el) => setNodeRef(index, el)" class="flex-none" :style="{ width: `${nodeWidth}px` }">
               <div class="flex flex-col items-center gap-1.5 px-1">
                 <span
                   class="grid h-9 w-9 place-items-center rounded-full border-2 text-xs font-semibold transition"
@@ -104,7 +150,7 @@ function markerClass(state) {
                   <template v-else>{{ index + 1 }}</template>
                 </span>
                 <span
-                  class="text-center text-xs leading-tight"
+                  class="text-center text-[11px] leading-tight sm:text-xs"
                   :class="
                     state.status === 'current'
                       ? 'font-semibold text-slate-900'
@@ -133,7 +179,7 @@ function markerClass(state) {
             <div
               v-if="index < states.length - 1"
               class="flex-none self-start"
-              :style="{ width: `${STEP - NODE_W}px`, marginTop: '17px' }"
+              :style="{ width: `${GAP}px`, marginTop: '17px' }"
               aria-hidden="true"
             >
               <div :class="connectorClass(index)" />
@@ -168,11 +214,7 @@ function markerClass(state) {
             路径方向为「当前节点 → 目标节点」，因此虚线沿路径正方向流动，
             视觉上就是"往回流"，与看板整体的从左到右正向流动相反。
           -->
-          <path
-            class="rollback-path"
-            :d="rollbackGeometry.d"
-            marker-end="url(#rollback-arrow)"
-          />
+          <path class="rollback-path" :d="rollbackGeometry.d" marker-end="url(#rollback-arrow)" />
           <text
             :x="rollbackGeometry.labelX"
             y="52"
@@ -180,7 +222,7 @@ function markerClass(state) {
             class="fill-rose-600"
             style="font-size: 10px"
           >
-            {{ rollbackGeometry.label.slice(0, 24) }}
+            {{ rollbackGeometry.label.slice(0, narrow ? 10 : 24) }}
           </text>
         </svg>
       </div>
@@ -204,11 +246,7 @@ function markerClass(state) {
 
 /* 只有当前活跃的这一条边流动（FR-24 渲染约定 3） */
 .connector--active {
-  background-image: repeating-linear-gradient(
-    90deg,
-    #0ea5e9 0 8px,
-    transparent 8px 16px
-  );
+  background-image: repeating-linear-gradient(90deg, #0ea5e9 0 8px, transparent 8px 16px);
   animation: connector-flow 0.8s linear infinite;
 }
 

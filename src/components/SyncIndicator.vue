@@ -5,8 +5,10 @@ import { SYNC_STATUS, STALE_SYNC_MINUTES } from '../constants/enums'
 import { relativeTime } from '../utils/time'
 
 /*
- * PRD FR-15 同步状态指示器：
- * 展示最后同步时间，超阈值转警示色，提供手动刷新，离线时明确标识。
+ * PRD FR-15 同步状态指示器。
+ *
+ * 移动端顶栏空间紧张：这里给一个「既能看状态、点一下就是刷新」的紧凑胶囊，
+ * 桌面端则保留完整文案 + 独立刷新按钮。
  */
 const workspace = useWorkspaceStore()
 
@@ -41,12 +43,31 @@ const label = computed(() => {
   return `最后同步 ${relativeTime(workspace.lastSyncAt, now.value)}`
 })
 
+/** 移动端用的短文案。 */
+const shortLabel = computed(() => {
+  if (!workspace.online) return '离线'
+  if (syncing.value) return '同步中'
+  if (failed.value) return '失败'
+  if (!workspace.lastSyncAt) return '未同步'
+  if (minutesSince.value < 1) return '刚刚'
+  if (minutesSince.value < 60) return `${Math.floor(minutesSince.value)}分前`
+  return `${Math.floor(minutesSince.value / 60)}时前`
+})
+
 const tone = computed(() => {
   if (!workspace.online) return 'text-amber-700 bg-amber-50 border-amber-200'
   if (failed.value) return 'text-rose-700 bg-rose-50 border-rose-200'
   if (syncing.value) return 'text-sky-700 bg-sky-50 border-sky-200'
   if (isStale.value) return 'text-amber-700 bg-amber-50 border-amber-200'
   return 'text-slate-600 bg-white border-slate-200'
+})
+
+const dotClass = computed(() => {
+  if (failed.value) return 'bg-rose-500'
+  if (syncing.value) return 'bg-sky-500 animate-pulse'
+  if (!workspace.online) return 'bg-amber-500'
+  if (isStale.value) return 'bg-amber-500'
+  return 'bg-emerald-500'
 })
 
 const canRefresh = computed(() => workspace.online && !syncing.value)
@@ -57,27 +78,34 @@ function refresh() {
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
+  <div class="flex shrink-0 items-center gap-2">
+    <!-- 移动端：紧凑胶囊，点一下即刷新 -->
+    <button
+      type="button"
+      class="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition disabled:opacity-60 sm:hidden"
+      :class="tone"
+      :disabled="!canRefresh"
+      :title="label"
+      :aria-label="label"
+      @click="refresh"
+    >
+      <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotClass" />
+      {{ shortLabel }}
+    </button>
+
+    <!-- 桌面端：完整文案 -->
     <span
       class="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs sm:inline-flex"
       :class="tone"
       :title="label"
     >
-      <span
-        class="h-1.5 w-1.5 shrink-0 rounded-full"
-        :class="{
-          'bg-emerald-500': !failed && !syncing && workspace.online && !isStale,
-          'bg-amber-500': workspace.online && (isStale || !workspace.online),
-          'bg-rose-500': failed,
-          'bg-sky-500 animate-pulse': syncing,
-        }"
-      />
+      <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotClass" />
       {{ label }}
     </span>
 
     <button
       type="button"
-      class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+      class="hidden rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 sm:block"
       :disabled="!canRefresh"
       @click="refresh"
     >

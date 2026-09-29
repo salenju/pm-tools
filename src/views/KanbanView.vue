@@ -60,6 +60,42 @@ const board = computed(() => {
   return { columns, unplaced }
 })
 
+/* ---------- 移动端：节点快速跳转 ---------- */
+
+const scrollerRef = ref(null)
+const columnRefs = ref([])
+const activeColumnIndex = ref(0)
+
+function setColumnRef(index, el) {
+  columnRefs.value[index] = el
+}
+
+/** 点节点胶囊 → 把对应列滚到可视区左侧。 */
+function scrollToColumn(index) {
+  const el = columnRefs.value[index]
+  if (!el) return
+  activeColumnIndex.value = index
+  el.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+}
+
+/** 滚动时更新胶囊高亮：取最靠近左侧的那一列。 */
+function onBoardScroll() {
+  const scroller = scrollerRef.value
+  if (!scroller) return
+  const left = scroller.getBoundingClientRect().left
+  let best = 0
+  let bestDistance = Number.POSITIVE_INFINITY
+  columnRefs.value.forEach((el, index) => {
+    if (!el) return
+    const distance = Math.abs(el.getBoundingClientRect().left - left)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = index
+    }
+  })
+  activeColumnIndex.value = best
+}
+
 /** 使用了非当前模板版本的项目数量。 */
 const legacyCount = computed(() => {
   const activeVersion = workspace.activeTemplate?.version
@@ -202,17 +238,45 @@ function clearFilters() {
       尚未加载到流程模板。请检查数据仓库配置，或点击右上角进入「同步与账号」初始化数据仓库。
     </p>
 
-    <div v-else class="thin-scrollbar -mx-4 overflow-x-auto px-4 pb-3">
-      <div class="flex items-start gap-3">
-        <section
+    <template v-else>
+      <!--
+        移动端：节点快速跳转。
+        看板有 7 列、总宽近 1900px，手机上盲划很难受；这里点一下就能跳到指定列。
+      -->
+      <div class="thin-scrollbar -mx-4 mb-2 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:hidden">
+        <button
           v-for="(column, index) in board.columns"
           :key="column.id"
-          class="flex w-64 flex-none flex-col rounded-xl border bg-slate-50/80 transition"
-          :class="dragOverIndex === index ? 'border-sky-400 bg-sky-50' : 'border-slate-200'"
-          @dragover="onDragOver(index, $event)"
-          @dragleave="onDragLeave(index)"
-          @drop.prevent="onDrop(index)"
+          type="button"
+          class="shrink-0 rounded-full border px-2.5 py-1 text-xs transition"
+          :class="
+            activeColumnIndex === index
+              ? 'border-slate-900 bg-slate-900 text-white'
+              : 'border-slate-300 bg-white text-slate-600'
+          "
+          @click="scrollToColumn(index)"
         >
+          {{ column.name }}
+          <span class="opacity-60">{{ column.projects.length }}</span>
+        </button>
+      </div>
+
+      <div
+        ref="scrollerRef"
+        class="thin-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 sm:snap-none"
+        @scroll.passive="onBoardScroll"
+      >
+        <div class="flex items-start gap-3">
+          <section
+            v-for="(column, index) in board.columns"
+            :key="column.id"
+            :ref="(el) => setColumnRef(index, el)"
+            class="flex w-[82vw] max-w-[20rem] flex-none snap-start flex-col rounded-xl border bg-slate-50/80 transition sm:w-64 sm:max-w-none"
+            :class="dragOverIndex === index ? 'border-sky-400 bg-sky-50' : 'border-slate-200'"
+            @dragover="onDragOver(index, $event)"
+            @dragleave="onDragLeave(index)"
+            @drop.prevent="onDrop(index)"
+          >
           <header class="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
             <h2 class="truncate text-sm font-semibold text-slate-800">
               <span class="mr-1 text-xs text-slate-400">{{ column.order }}</span>{{ column.name }}
@@ -243,10 +307,10 @@ function clearFilters() {
           </div>
         </section>
 
-        <section
-          v-if="board.unplaced.length"
-          class="flex w-64 flex-none flex-col rounded-xl border border-dashed border-slate-300 bg-white"
-        >
+          <section
+            v-if="board.unplaced.length"
+            class="flex w-[82vw] max-w-[20rem] flex-none flex-col rounded-xl border border-dashed border-slate-300 bg-white sm:w-64 sm:max-w-none"
+          >
           <header class="border-b border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500">
             未归位（{{ board.unplaced.length }}）
           </header>
@@ -263,11 +327,12 @@ function clearFilters() {
             />
           </div>
         </section>
+        </div>
       </div>
-    </div>
+    </template>
 
     <p class="mt-1 text-xs text-slate-400">
-      提示：电脑端可把卡片拖到下一个节点列；手机端请点开卡片推进。
+      提示：电脑端可把卡片拖到下一个节点列；手机端用上方节点胶囊快速跳列，点开卡片即可推进。
     </p>
   </div>
 </template>

@@ -15,12 +15,24 @@ const ui = useUiStore()
 const route = useRoute()
 
 const NAV = [
-  { name: 'kanban', label: '看板' },
-  { name: 'projects', label: '项目' },
-  { name: 'customers', label: '客户' },
-  { name: 'todos', label: '待办' },
-  { name: 'templates', label: '流程' },
+  { name: 'kanban', label: '看板', path: 'M4 5h16 M4 5v14 M20 5v14 M9.3 5v14 M14.7 5v14' },
+  { name: 'projects', label: '项目', path: 'M4 6h16 M4 12h16 M4 18h10' },
+  {
+    name: 'customers',
+    label: '客户',
+    path: 'M4 20V6a2 2 0 012-2h6a2 2 0 012 2v14 M14 20V11h4a2 2 0 012 2v7 M3 20h18 M7 8h2 M7 12h2 M7 16h2',
+  },
+  { name: 'todos', label: '待办', path: 'M4 12l3 3 6-7 M14 8h6 M14 17h6' },
+  { name: 'templates', label: '流程', path: 'M5 4h4v3H5z M15 11h4v3h-4z M7 7v7h8' },
 ]
+
+/** 导航项选中态：详情页归属它的列表页。 */
+function isActive(name) {
+  if (route.name === name) return true
+  if (name === 'projects' && route.name === 'project-detail') return true
+  if (name === 'customers' && route.name === 'customer-detail') return true
+  return false
+}
 
 const submitting = ref(false)
 
@@ -130,23 +142,25 @@ defineExpose({})
           <span class="hidden text-sm font-semibold text-slate-900 sm:inline">pm-tools</span>
         </RouterLink>
 
-        <nav class="thin-scrollbar flex flex-1 items-center gap-1 overflow-x-auto">
+        <!--
+          桌面端用顶部横向导航；移动端改用底部标签栏。
+          原来是「顶部导航 + overflow-x-auto」——在 320px 屏上可拖区域只剩 64px，
+          5 个入口要靠横向拖动才能点到，这是 H5 体验最差的一处。
+        -->
+        <nav class="hidden flex-1 items-center gap-1 sm:flex">
           <RouterLink
             v-for="item in NAV"
             :key="item.name"
             :to="{ name: item.name }"
             class="shrink-0 rounded-lg px-3 py-1.5 text-sm transition"
-            :class="
-              route.name === item.name ||
-              (item.name === 'projects' && route.name === 'project-detail') ||
-              (item.name === 'customers' && route.name === 'customer-detail')
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            "
+            :class="isActive(item.name) ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'"
           >
             {{ item.label }}
           </RouterLink>
         </nav>
+
+        <!-- 移动端占位：让右侧状态区贴右 -->
+        <div class="flex-1 sm:hidden" />
 
         <div class="flex shrink-0 items-center gap-2">
           <SyncIndicator />
@@ -167,7 +181,7 @@ defineExpose({})
               alt=""
               class="h-5 w-5 shrink-0 rounded-full"
             />
-            <span class="max-w-[6.5rem] truncate font-medium sm:max-w-[12rem]">
+            <span class="max-w-[9rem] truncate font-medium sm:max-w-[12rem]">
               {{ session.repoLabel || '未连接仓库' }}
             </span>
           </RouterLink>
@@ -230,9 +244,41 @@ defineExpose({})
       </div>
     </div>
 
-    <main class="flex-1">
+    <!-- 底部为移动端标签栏留出高度（含 iOS 安全区） -->
+    <main class="flex-1 pb-[3.75rem] sm:pb-0">
       <RouterView />
     </main>
+
+    <!-- 移动端底部标签栏：5 个入口平铺，不需要任何横向滚动 -->
+    <nav
+      v-if="showChrome"
+      class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur sm:hidden"
+      style="padding-bottom: env(safe-area-inset-bottom)"
+    >
+      <div class="flex">
+        <RouterLink
+          v-for="item in NAV"
+          :key="item.name"
+          :to="{ name: item.name }"
+          class="flex flex-1 flex-col items-center gap-0.5 pt-2 pb-1.5 transition"
+          :class="isActive(item.name) ? 'text-slate-900' : 'text-slate-400'"
+        >
+          <svg
+            class="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path :d="item.path" />
+          </svg>
+          <span class="text-[10px] leading-none">{{ item.label }}</span>
+        </RouterLink>
+      </div>
+    </nav>
 
     <ConflictResolver />
     <ToastHost />

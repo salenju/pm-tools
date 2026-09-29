@@ -13,7 +13,10 @@ const STYLES = {
 
 <template>
   <Teleport to="body">
-    <div class="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex flex-col items-center gap-2 px-4 sm:bottom-auto sm:top-4">
+    <!-- 移动端要抬高，避开底部标签栏（约 56px + 安全区） -->
+    <div
+      class="pointer-events-none fixed inset-x-0 bottom-20 z-[70] flex flex-col items-center gap-2 px-4 sm:bottom-auto sm:top-4"
+    >
       <div
         v-for="toast in ui.toasts"
         :key="toast.id"

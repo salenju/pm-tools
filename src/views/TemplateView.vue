@@ -203,9 +203,14 @@ const dirty = computed(() => {
         （FR-08 变更隔离），不会因为这次修改而变化。
       </div>
 
+      <!--
+        min-w-0 是必需的：grid/flex 子项默认 min-width:auto，会以"内容最小宽度"为准。
+        实时预览里那排节点（7 × 128px ≈ 1088px）会把整列顶宽，导致整页横向溢出。
+        给子项加 min-w-0 后，内部那个 overflow-x-auto 才能正常接管滚动。
+      -->
       <div class="grid gap-4 lg:grid-cols-[16rem_1fr]">
         <!-- 节点列表 -->
-        <section class="rounded-xl border border-slate-200 bg-white">
+        <section class="min-w-0 rounded-xl border border-slate-200 bg-white">
           <header class="flex items-center justify-between border-b border-slate-100 px-3 py-2">
             <h2 class="text-sm font-semibold text-slate-900">节点</h2>
             <button
@@ -256,7 +261,7 @@ const dirty = computed(() => {
         </section>
 
         <!-- 节点详情 -->
-        <section class="space-y-4">
+        <section class="min-w-0 space-y-4">
           <div v-if="!selectedNode" class="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-400">
             请先在左侧选择一个节点。
           </div>
@@ -304,16 +309,16 @@ const dirty = computed(() => {
                 :key="field.id"
                 class="rounded-lg border border-slate-200 p-3"
               >
-                <div class="grid gap-2 sm:grid-cols-[1fr_9rem_6rem_auto]">
+                <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_6rem_auto]">
                   <input
                     v-model="field.name"
                     type="text"
                     placeholder="字段名称"
-                    class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
+                    class="min-w-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
                   />
                   <select
                     v-model="field.type"
-                    class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-500"
+                    class="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-500"
                   >
                     <option v-for="option in FIELD_TYPE_OPTIONS" :key="option.value" :value="option.value">
                       {{ option.label }}
