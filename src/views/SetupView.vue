@@ -49,6 +49,42 @@ const parsedRepo = computed(() => parseRepoInput(form.repoInput))
 const repoInputHasError = computed(() => Boolean(form.repoInput.trim()) && !parsedRepo.value)
 const canSubmit = computed(() => Boolean(form.token.trim() && parsedRepo.value))
 
+const diagnosing = ref(false)
+const diagnostic = ref(null)
+
+const LEVEL_STYLES = {
+  ok: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  warn: 'border-amber-200 bg-amber-50 text-amber-900',
+  error: 'border-rose-200 bg-rose-50 text-rose-900',
+  info: 'border-slate-200 bg-slate-50 text-slate-700',
+}
+
+/**
+ * 自助诊断。
+ * GitHub 对「仓库不存在」「Token 没覆盖该仓库」「无权限」一律返回 404，
+ * 光看报错无法判断，所以这里把三种成因拆开逐项检查。
+ */
+async function runDiagnose() {
+  if (!parsedRepo.value) {
+    ui.warn('请先填写一个可识别的仓库地址。')
+    return
+  }
+  diagnosing.value = true
+  diagnostic.value = null
+  try {
+    diagnostic.value = await session.diagnose({
+      owner: parsedRepo.value.owner,
+      repo: parsedRepo.value.repo,
+    })
+  } catch (error) {
+    diagnostic.value = {
+      items: [{ level: 'error', title: '诊断过程出错', detail: error?.message || '未知错误' }],
+    }
+  } finally {
+    diagnosing.value = false
+  }
+}
+
 const showForm = computed(() => !session.isReady || editing.value)
 
 /** 远端有文件、但没有可解析的 config.json → 可能连到了别的仓库。 */
@@ -97,6 +133,7 @@ async function connect() {
   }
   connecting.value = true
   initError.value = ''
+  diagnostic.value = null
   try {
     const ok = await session.connect({
       token: form.token,
@@ -106,6 +143,10 @@ async function connect() {
     })
     if (!ok) {
       ui.error(session.error || '连接失败')
+      // 404 有三种互不相同的成因，直接自动跑一次诊断，省得用户自己猜
+      if (session.errorKind === 'not-found' || session.errorKind === 'forbidden') {
+        await runDiagnose()
+      }
       return
     }
     ui.success(`已连接为 ${session.actorName}`)
@@ -301,7 +342,64 @@ onMounted(async () => {
         </div>
 
         <p v-if="session.error" class="text-sm text-rose-600">{{ session.error }}</p>
+
+        <button
+          type="button"
+          class="text-xs text-sky-600 underline disabled:opacity-50"
+          :disabled="diagnosing || !parsedRepo"
+          @click="runDiagnose"
+        >
+          {{ diagnosing ? '诊断中…' : '连不上？点这里逐项诊断' }}
+        </button>
       </form>
+
+      <!-- 诊断报告 -->
+      <div v-if="diagnostic" class="space-y-2">
+        <h2 class="text-sm font-semibold text-slate-900">
+          诊断结果
+          <span class="ml-1 font-normal text-slate-400">
+            针对 {{ parsedRepo?.owner }}/{{ parsedRepo?.repo }}
+          </span>
+        </h2>
+        <div
+          v-for="(item, index) in diagnostic.items"
+          :key="index"
+          class="rounded-lg border px-3 py-2.5 text-sm"
+          :class="LEVEL_STYLES[item.level] || LEVEL_STYLES.info"
+        >
+          <p class="font-medium">{{ item.title }}</p>
+          <p class="mt-0.5 leading-relaxed opacity-90">{{ item.detail }}</p>
+        </div>
+
+        <div class="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-500">
+          <p class="mb-1 font-medium text-slate-700">404 的三种常见成因，逐一对照：</p>
+          <ol class="list-decimal space-y-0.5 pl-4">
+            <li>
+              <strong>仓库还没建</strong>：去
+              <a
+                href="https://github.com/new"
+                target="_blank"
+                rel="noopener"
+                class="text-sky-600 underline"
+              >GitHub 新建一个 private 仓库</a>。
+            </li>
+            <li>
+              <strong>Token 没覆盖这个仓库</strong>（fine-grained Token 最常见）：打开
+              <a
+                href="https://github.com/settings/personal-access-tokens"
+                target="_blank"
+                rel="noopener"
+                class="text-sky-600 underline"
+              >Token 设置</a>，在
+              <em>Repository access → Only select repositories</em> 里把该仓库勾上并保存。
+            </li>
+            <li>
+              <strong>Token 是 classic 且缺权限</strong>：classic Token 需要 <code>repo</code> 范围；
+              建议直接改用 fine-grained Token。
+            </li>
+          </ol>
+        </div>
+      </div>
     </section>
 
     <!-- ============ 已连接 ============ -->

@@ -20,12 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 本项目使用 pnpm（仓库中只有 pnpm-lock.yaml，没有 package-lock.json）。
+      # pnpm/action-setup 必须放在 setup-node 之前，否则 cache: pnpm 找不到 pnpm 可执行文件。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       # PRD 7.6：项目站点需要 base = '/<仓库名>/'，用户/组织站点为 '/'
       - name: Resolve base path
@@ -38,12 +45,16 @@ jobs:
             echo "base=/$REPO_NAME/" >> "$GITHUB_OUTPUT"
           fi
 
+      # enablement: true 会在 Pages 尚未启用时自动启用（需要上面的 pages: write 权限），
+      # 省掉「去 Settings 手动把 Source 改成 GitHub Actions」这一步。
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Build
-        run: npm run build
+        run: pnpm build
         env:
           VITE_BASE: ${{ steps.base.outputs.base }}
-
-      - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:

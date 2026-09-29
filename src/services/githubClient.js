@@ -48,7 +48,10 @@ export class ForbiddenError extends GithubError {
 }
 
 export class NotFoundError extends GithubError {
-  constructor(message = '找不到该仓库或文件。若仓库是 private，请确认已把当前账号加为 collaborator。', options = {}) {
+  constructor(
+    message = '找不到该仓库。GitHub 对以下三种情况返回的都是 404，无法区分：① 仓库不存在或名字写错；② 这是 fine-grained Token，但没有把该仓库加入 Repository access；③ Token 是 classic 且缺少 repo 权限。请点下方「诊断一下」逐项排查。',
+    options = {},
+  ) {
     super(message, options)
     this.name = 'NotFoundError'
   }
@@ -77,12 +80,12 @@ export class NetworkError extends GithubError {
   }
 }
 
-function buildHeaders({ etag, hasBody }) {
+function buildHeaders({ etag, hasBody, anonymous }) {
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': API_VERSION,
   }
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (token && !anonymous) headers.Authorization = `Bearer ${token}`
   if (etag) headers['If-None-Match'] = etag
   if (hasBody) headers['Content-Type'] = 'application/json'
   return headers
@@ -90,17 +93,18 @@ function buildHeaders({ etag, hasBody }) {
 
 /**
  * 统一请求入口。
+ * @param {{method?: string, body?: any, etag?: string|null, signal?: AbortSignal, anonymous?: boolean}} [options]
  * @returns {{notModified: boolean, data: any, etag: string|null}}
  */
 async function request(path, options = {}) {
-  const { method = 'GET', body, etag, signal } = options
+  const { method = 'GET', body, etag, signal, anonymous = false } = options
   const hasBody = body !== undefined
 
   let response
   try {
     response = await fetch(`${API_BASE}${path}`, {
       method,
-      headers: buildHeaders({ etag, hasBody }),
+      headers: buildHeaders({ etag, hasBody, anonymous }),
       body: hasBody ? JSON.stringify(body) : undefined,
       signal,
     })
@@ -192,6 +196,36 @@ export async function getUser() {
 export async function getRepository(owner, repo) {
   const { data } = await request(`/repos/${owner}/${repo}`)
   return data
+}
+
+/**
+ * 当前 Token 能够访问的仓库清单。
+ *
+ * 用途：fine-grained PAT 最常见的失败原因是「仓库没有被加入 Repository access」，
+ * 此时 GET /repos/{owner}/{repo} 返回 404，与"仓库不存在"完全无法区分。
+ * 列出 Token 实际能看到的仓库，就能把这个原因单独识别出来。
+ *
+ * 注意：并非所有 Token 类型都允许调用此接口，调用方需容错。
+ */
+export async function listUserRepos({ perPage = 100 } = {}) {
+  const { data } = await request(
+    `/user/repos?per_page=${perPage}&affiliation=owner,collaborator,organization_member&sort=updated`,
+  )
+  return Array.isArray(data) ? data : []
+}
+
+/**
+ * 匿名探测仓库是否公开存在。
+ * @returns {boolean|null} true=公开可访问; false=不存在或私有; null=无法判断
+ */
+export async function probePublicRepository(owner, repo) {
+  try {
+    await request(`/repos/${owner}/${repo}`, { anonymous: true })
+    return true
+  } catch (error) {
+    if (error instanceof NotFoundError) return false
+    return null
+  }
 }
 
 /**

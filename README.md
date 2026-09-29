@@ -38,9 +38,11 @@
 ### 3. 本地开发
 
 ```bash
-npm install
-npm run dev          # http://localhost:5173
+pnpm install
+pnpm dev             # http://localhost:5173
 ```
+
+> 本项目使用 **pnpm**（仓库里只有 `pnpm-lock.yaml`）。用 npm 也能跑起来，但请不要提交 `package-lock.json`，否则 CI 会装出另一套依赖树。
 
 打开页面后填写 Token，然后**直接粘贴 GitHub 仓库地址**（工具自动拆分 owner 与 repo）。
 
@@ -50,14 +52,34 @@ npm run dev          # http://localhost:5173
 
 ### 4. 部署到 GitHub Pages
 
-把前端代码推到一个 **public** 仓库（代码公开无所谓，数据在另一个私有仓库），然后在仓库设置里：
+把前端代码推到一个 **public** 仓库（代码公开无所谓，数据在另一个私有仓库），推送到 `main` 分支即自动部署。
 
-1. **Settings → Pages → Build and deployment → Source** 选 `GitHub Actions`
-2. 推送到 `main` 分支即自动部署
+工作流会自动处理三件事：
 
-`.github/workflows/deploy.yml` 会自动把 Vite 的 `base` 解析为 `/<仓库名>/`。若是用户/组织站点（`xxx.github.io`）则自动用 `/`。
+1. **自动启用 Pages**（`configure-pages` 的 `enablement: true`），不需要你先进 Settings 把 Source 改成 GitHub Actions
+2. **自动解析 `base`** 为 `/<仓库名>/`（用户/组织站点 `xxx.github.io` 则用 `/`）
+3. **用 pnpm 安装并构建**（`--frozen-lockfile`，锁文件不一致会直接失败而不是悄悄装出别的版本）
+
+> 如果部署失败提示 "Get Pages site failed" 或类似的权限错误，再去
+> **Settings → Pages → Build and deployment → Source** 手动选一次 `GitHub Actions`。
 
 构建产物不含任何凭证（Token 只存在使用者本机浏览器），因此前端仓库可以放心公开。
+
+---
+
+## 连不上数据仓库？
+
+GitHub 的 `GET /repos/{owner}/{repo}` 对下面三种完全不同的情况**返回的都是 404**，光看报错分不出是哪种：
+
+| 原因 | 怎么确认 | 怎么修 |
+| --- | --- | --- |
+| 仓库还没建 | 打开 `https://github.com/你的用户名?tab=repositories` 看有没有 | 建一个 **private** 仓库 |
+| fine-grained Token 没覆盖这个仓库 | Token 设置里 `Repository access` 的列表中没有它 | 把该仓库勾进 `Only select repositories` 并保存 |
+| Token 是 classic 且缺 `repo` 范围 | Token 是否以 `ghp_` 开头（fine-grained 是 `github_pat_`） | 改用 fine-grained Token，或补上 `repo` 范围 |
+
+**连接失败时工具会自动跑一次诊断**，把这三类拆开逐项告诉你，并列出名字相近的仓库（用来抓拼写错误和 owner 填错）。也可以手动点「连不上？点这里逐项诊断」。
+
+> 最常见的误判：仓库建在**组织**下，但你习惯性地填了自己的用户名。去仓库页面复制地址粘贴过来最稳。
 
 ---
 
@@ -151,7 +173,7 @@ data-repo/                       (private)
 ## 常用命令
 
 ```bash
-npm run dev       # 开发服务器
-npm run build     # 生产构建，产物在 dist/
-npm run preview   # 本地预览生产构建
+pnpm dev       # 开发服务器
+pnpm build     # 生产构建，产物在 dist/
+pnpm preview   # 本地预览生产构建
 ```
