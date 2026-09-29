@@ -52,16 +52,23 @@ pnpm dev             # http://localhost:5173
 
 ### 4. 部署到 GitHub Pages
 
-把前端代码推到一个 **public** 仓库（代码公开无所谓，数据在另一个私有仓库），推送到 `main` 分支即自动部署。
+把前端代码推到一个 **public** 仓库（代码公开无所谓，数据在另一个私有仓库）。
 
-工作流会自动处理三件事：
+**首次部署前必须手动启用一次 Pages**（只做一次，20 秒）：
 
-1. **自动启用 Pages**（`configure-pages` 的 `enablement: true`），不需要你先进 Settings 把 Source 改成 GitHub Actions
-2. **自动解析 `base`** 为 `/<仓库名>/`（用户/组织站点 `xxx.github.io` 则用 `/`）
-3. **用 pnpm 安装并构建**（`--frozen-lockfile`，锁文件不一致会直接失败而不是悄悄装出别的版本）
+> **Settings → Pages → Build and deployment → Source** 选 `GitHub Actions`
 
-> 如果部署失败提示 "Get Pages site failed" 或类似的权限错误，再去
-> **Settings → Pages → Build and deployment → Source** 手动选一次 `GitHub Actions`。
+然后推送到 `main` 分支即自动部署。
+
+> **为什么这一步不能自动完成**：`actions/configure-pages` 确实有个 `enablement: true`
+> 选项，但官方文档写明它「requires a token **other than** `GITHUB_TOKEN`」。用工作流默认的
+> `github.token` 调用它**必然失败**，而且失败后整个 build 作业会中断、deploy 被跳过——
+> 结果是 Pages 永远启用不了。所以这一步只能手动做一次。
+
+工作流会自动处理两件事：
+
+1. **解析 `base`** 为 `/<仓库名>/`（用户/组织站点 `xxx.github.io` 则用 `/`）
+2. **用 pnpm 安装并构建**（`--frozen-lockfile`，锁文件不一致会直接失败，而不是悄悄装出别的版本）
 
 构建产物不含任何凭证（Token 只存在使用者本机浏览器），因此前端仓库可以放心公开。
 

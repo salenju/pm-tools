@@ -18,15 +18,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # 本项目使用 pnpm（仓库中只有 pnpm-lock.yaml，没有 package-lock.json）。
-      # pnpm/action-setup 必须放在 setup-node 之前，否则 cache: pnpm 找不到 pnpm 可执行文件。
-      - uses: pnpm/action-setup@v4
+      # 本项目使用 pnpm（仓库里只有 pnpm-lock.yaml，没有 package-lock.json）。
+      # pnpm/action-setup 必须排在 setup-node 之前，否则 cache: pnpm 找不到 pnpm 可执行文件。
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -45,18 +45,21 @@ jobs:
             echo "base=/$REPO_NAME/" >> "$GITHUB_OUTPUT"
           fi
 
-      # enablement: true 会在 Pages 尚未启用时自动启用（需要上面的 pages: write 权限），
-      # 省掉「去 Settings 手动把 Source 改成 GitHub Actions」这一步。
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # 这里刻意**不使用** enablement: true。
+      #
+      # configure-pages 的文档明确写着该选项
+      # "requires a token other than GITHUB_TOKEN to be provided"，
+      # 也就是说用默认的 github.token 调用它**必然失败**，而且失败后整个 build 作业
+      # 会中断、deploy 被跳过、Pages 永远启用不了。
+      # 因此 Pages 需要在仓库 Settings → Pages 里手动启用一次（Source 选 GitHub Actions）。
+      - uses: actions/configure-pages@v6
 
       - name: Build
         run: pnpm build
         env:
           VITE_BASE: ${{ steps.base.outputs.base }}
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -68,4 +71,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
